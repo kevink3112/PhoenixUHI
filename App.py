@@ -142,6 +142,59 @@ else:
     
     st.plotly_chart(fig, use_container_width=True)
 
+# --- INSERT THIS INSIDE App.py ABOVE THE SCIENTIFIC FOOTER ---
+
+st.write("---")
+st.subheader("🌡️ The Spatiotemporal Heat Contagion (1940s - 2020s)")
+st.markdown("""
+    This thermal matrix illustrates the **gradual convergence** of the regional heat island footprint. 
+    Color blocks represent the **Overnight Heat Anomaly Delta** per decade compared to early mid-century baseline norms. 
+    Watch how the East Valley (*Mesa*) starts completely cool and decoupled, before rapidly shifting colors and fusing with *Phoenix* into a singular climate megadome by the 1990s.
+""")
+
+# Process the data to get clean decadal averages for the heatmap grid
+matrix_copy = df_matrix.copy()
+matrix_copy['Decade'] = (matrix_copy['Year'] // 10) * 10
+
+# Isolate the core timeline where urban expansion took off
+heatmap_df = matrix_copy[matrix_copy['Decade'] >= 1940]
+
+# Calculate mean TMIN per decade for each tracking node
+decadal_grid = heatmap_df.groupby('Decade').agg({
+    'Phoenix_Sky_Harbor': 'mean',
+    'Mesa_Ag': 'mean',
+    'Tucson_Airport': 'mean',
+    'Yuma_Airport': 'mean'
+}).transpose()
+
+# Rename indexes for clean presentation display
+decadal_grid.index = ['Phoenix Core', 'Mesa (East Valley)', 'Tucson Metro', 'Yuma Gateway']
+
+# Convert absolute temperatures into an Anomaly Delta relative to the 1940s baseline
+# This highlights the direct *rate* of local pavement heat accumulation over time
+baseline_1940s = decadal_grid[1940]
+anomaly_grid = decadal_grid.sub(baseline_1940s, axis=0)
+
+# Build the Plotly Imshow Heatmap Matrix
+fig_heatmap = go.Figure(data=go.Heatmap(
+    z=anomaly_grid.values,
+    x=[f"{str(col)}s" for col in anomaly_grid.columns],
+    y=anomaly_grid.index,
+    colorscale='Thermal', # Blazing dark blue -> purple -> red -> orange yellow
+    colorbar=dict(title="Added Heat Penalty (°F)"),
+    hovertemplate="City Hub: %{y}<br>Decade: %{x}<br>Added Heat Load: +%{z:.2f}°F<extra></extra>"
+))
+
+fig_heatmap.update_layout(
+    xaxis_title="Temporal Axis (Decades)",
+    yaxis_title="Regional Urban Tracking Nodes",
+    margin=dict(l=40, r=40, t=20, b=40),
+    height=350
+)
+
+st.plotly_chart(fig_heatmap, use_container_width=True)
+
+
 # --- SCIENTIFIC FOOTER ---
 st.write("---")
 with st.expander("🔍 View the Full Scientific Analysis & Data Breakthroughs"):
