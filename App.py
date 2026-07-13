@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import timedelta
 
 # Set up page configurations
 st.set_page_config(page_title="Phoenix UHI Counterfactual Machine", layout="wide")
@@ -11,14 +10,13 @@ def load_and_process_data():
     # Load our pivoted matrix from Phase 3/4
     matrix = pd.read_csv("az_tmin_pivoted_matrix.csv")
     matrix['Date'] = pd.to_datetime(matrix['Date'])
+    matrix['Year'] = matrix['Date'].dt.year
     matrix['Month'] = matrix['Date'].dt.month
     
     # Calculate baseline monthly UHI profiles during peak urban overlap (1990-2009)
-    # This acts as our modern baseline profile for when rural stations went dark
     modern_overlap = matrix[(matrix['Date'] >= '1990-01-01') & (matrix['Date'] <= '2009-12-31')].copy()
     
-    # Calculate daily UHI intensity profiles
-    # Historical base offsets calculated in Phase 3
+    # Calculate daily UHI intensity profiles (Historical base offset = 6.74)
     base_offset_wick = 6.74 
     modern_overlap['Daily_UHI'] = modern_overlap['Phoenix_Sky_Harbor'] - modern_overlap['Wickenburg_Rural'] - base_offset_wick
     
@@ -28,10 +26,8 @@ def load_and_process_data():
     # Build the Counterfactual Engine Column for the entire 1933-2026 timeline
     uhi_free_lows = []
     for _, row in matrix.iterrows():
-        # If ground-truth rural data exists on this day, use it directly
         if pd.notna(row['Wickenburg_Rural']):
             uhi_free_lows.append(row['Wickenburg_Rural'] + base_offset_wick)
-        # If modern era (rural dark), strip the modern seasonal UHI penalty from Sky Harbor
         else:
             month = row['Month']
             penalty = monthly_uhi_profile.get(month, 6.8) # Default fallback to mean UHI
@@ -57,98 +53,88 @@ st.markdown("""
 st.write("---")
 
 # --- SIDEBAR CONTROLS ---
-st.sidebar.header("Select Date Parameters")
-min_date = df_matrix['Date'].min().to_pydatetime()
-max_date = df_matrix['Date'].max().to_pydatetime()
+st.sidebar.header("Select Time Frame")
 
-selected_date = st.sidebar.date_input(
-    "Target Date",
-    value=max_date - timedelta(days=2), # Default view to a recent modern summer day
-    min_value=min_date,
-    max_value=max_date
-)
+# Extract available years sorted newest to oldest
+available_years = sorted(df_matrix['Year'].unique(), reverse=True)
+selected_year = st.sidebar.selectbox("Select Year", available_years, index=0)
 
-# Filter data to selected date
-target_datetime = pd.to_datetime(selected_date)
-day_data = df_matrix[df_matrix['Date'] == target_datetime]
+# Map month integers to clean string names for user dropdown selection
+month_map = {
+    1: "January", 2: "February", 3: "March", 4: "April", 5: "May", 6: "June",
+    7: "July", 8: "August", 9: "September", 10: "October", 11: "November", 12: "December"
+}
+selected_month_name = st.sidebar.selectbox("Select Month", list(month_map.values()), index=6) # Defaults to July
+selected_month_int = [key for key, val in month_map.items() if val == selected_month_name][0]
 
-if day_data.empty:
-    st.warning("No weather data found for this specific date track. Try another selection!")
+# Filter our dataset to match the user's specific selection
+filtered_month_df = df_matrix[
+    (df_matrix['Year'] == selected_year) & 
+    (df_matrix['Month'] == selected_month_int)
+].sort_values(by='Date')
+
+if filtered_month_df.empty:
+    st.warning(f"No continuous weather records found for {selected_month_name} {selected_year}. Try adjusting your target selections!")
 else:
-    row = day_data.iloc[0]
-    obs_low = row['Phoenix_Sky_Harbor']
-    free_low = row['UHI_Free_TMIN']
-    trapped = row['Degrees_Trapped']
+    # Calculate robust macro averages for the selected month block
+    avg_observed = filtered_month_df['Phoenix_Sky_Harbor'].mean()
+    avg_counterfactual = filtered_month_df['UHI_Free_TMIN'].mean()
+    avg_trapped = filtered_month_df['Degrees_Trapped'].mean()
     
     # --- METRIC CARDS ---
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric(label="Observed Phoenix Low", value=f"{obs_low:.1f}°F")
+        st.metric(label=f"Avg. Observed Low ({selected_month_name})", value=f"{avg_observed:.1f}°F")
     with col2:
-        st.metric(label="UHI-Free Natural Desert Low", value=f"{free_low:.1f}°F")
+        st.metric(label="Avg. UHI-Free Natural Low", value=f"{avg_counterfactual:.1f}°F")
     with col3:
-        st.metric(label="Artificial Heat Trapped by Concrete", value=f"{trapped:+.1f}°F", delta=f"{trapped:.1f}°F Warmer", delta_color="inverse")
+        st.metric(label="Avg. Artificial Heat Trapped", value=f"{avg_trapped:+.1f}°F", delta=f"{avg_trapped:.1f}°F Warmer", delta_color="inverse")
         
     st.write("---")
     
     # --- VISUALIZATION GRAPH ---
-    st.subheader("30-Day Context Window Timeline")
-    st.markdown("Look at how the observed city temperatures diverge from the natural baseline environment over a 4-week window:")
-    
-    # Pull a 30 day window around target date for clean chart context
-    window_start = target_datetime - timedelta(days=15)
-    window_end = target_datetime + timedelta(days=15)
-    window_df = df_matrix[(df_matrix['Date'] >= window_start) & (df_matrix['Date'] <= window_end)]
+    st.subheader(f"📈 Daily Profile: {selected_month_name} {selected_year}")
+    st.markdown("Compare the day-to-day observed city trajectory against the unurbanized desert counterfactual:")
     
     fig = go.Figure()
     
     # Observed Line
     fig.add_trace(go.Scatter(
-        x=window_df['Date'], y=window_df['Phoenix_Sky_Harbor'],
-        mode='lines', name='Observed Sky Harbor Lows',
-        line=dict(color='#ef553b', width=3)
+        x=filtered_month_df['Date'].dt.day, y=filtered_month_df['Phoenix_Sky_Harbor'],
+        mode='lines+markers', name='Observed Sky Harbor Lows',
+        line=dict(color='#ef553b', width=3),
+        marker=dict(size=6)
     ))
     
     # Counterfactual Line
     fig.add_trace(go.Scatter(
-        x=window_df['Date'], y=window_df['UHI_Free_TMIN'],
-        mode='lines', name='Counterfactual UHI-Free Lows',
-        line=dict(color='#636efa', width=3, dash='dash')
-    ))
-    
-    # Highlight specific selected day
-    fig.add_trace(go.Scatter(
-        x=[target_datetime], y=[obs_low],
-        mode='markers', name='Selected Day Observed',
-        marker=dict(color='red', size=12, symbol='circle')
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=[target_datetime], y=[free_low],
-        mode='markers', name='Selected Day Counterfactual',
-        marker=dict(color='blue', size=12, symbol='diamond')
+        x=filtered_month_df['Date'].dt.day, y=filtered_month_df['UHI_Free_TMIN'],
+        mode='lines+markers', name='Counterfactual UHI-Free Natural Lows',
+        line=dict(color='#636efa', width=3, dash='dash'),
+        marker=dict(size=6, symbol='diamond')
     ))
     
     fig.update_layout(
-        xaxis_title="Date",
-        yaxis_title="Overnight Minimum Temperature (°F)",
+        xaxis=dict(
+            title="Day of the Month", 
+            tickmode="linear", 
+            tick0=1, 
+            dtick=2,
+            gridcolor='rgba(200, 200, 200, 0.2)'
+        ),
+        yaxis=dict(
+            title="Overnight Minimum Temperature (°F)",
+            gridcolor='rgba(200, 200, 200, 0.2)'
+        ),
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=40, r=40, t=40, b=40)
+        margin=dict(l=40, r=40, t=40, b=40),
+        plot_bgcolor='rgba(0,0,0,0)'
     )
     
     st.plotly_chart(fig, use_container_width=True)
 
-# --- SCIENTIFIC INSIGHT FOOTER ---
-st.write("---")
-st.subheader("📊 Empirical Project Takeaways")
-st.markdown(f"""
-* **The Baseline Era (1933-1940):** Our predictive engine calibrated its natural mathematical settings using the pre-war era, proving that a non-urbanized Phoenix basin naturally trends only **6.74°F** warmer than Wickenburg and **1.98°F** warmer than Florence due strictly to low elevation geography.
-* **The Multi-City Gradient Framework:** By analyzing regional milestones over the last 40 years, we found Phoenix sits **7.41°F** warmer overnight than its high-desert sister city (**Tucson**), proving that urban heat retention scales aggressively based on core concrete density rather than simple regional greenhouse updates.
-""")
-
-# --- EXTENDED FOOTER ---
-
+# --- SCIENTIFIC FOOTER ---
 st.write("---")
 with st.expander("🔍 View the Full Scientific Analysis & Data Breakthroughs"):
     st.markdown("""
