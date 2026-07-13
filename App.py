@@ -13,25 +13,35 @@ def load_and_process_data():
     matrix['Year'] = matrix['Date'].dt.year
     matrix['Month'] = matrix['Date'].dt.month
     
-    # Calculate baseline monthly UHI profiles during peak urban overlap (1990-2009)
-    modern_overlap = matrix[(matrix['Date'] >= '1990-01-01') & (matrix['Date'] <= '2009-12-31')].copy()
+    # --- DYNAMIC RURAL RECONSTRUCTION (THE FIX) ---
+    # Find the historical window where both Wickenburg and Tucson were active
+    overlap = matrix[matrix['Wickenburg_Rural'].notna() & matrix['Tucson_Airport'].notna()].copy()
     
-    # Calculate daily UHI intensity profiles (Historical base offset = 6.74)
+    # Calculate the natural monthly baseline difference between Wickenburg and Tucson
+    overlap['Wick_Tuc_Diff'] = overlap['Wickenburg_Rural'] - overlap['Tucson_Airport']
+    monthly_wick_tuc_profile = overlap.groupby('Month')['Wick_Tuc_Diff'].mean().to_dict()
+    
+    # Base geographical offset for Phoenix vs Wickenburg from Phase 3
     base_offset_wick = 6.74 
-    modern_overlap['Daily_UHI'] = modern_overlap['Phoenix_Sky_Harbor'] - modern_overlap['Wickenburg_Rural'] - base_offset_wick
     
-    # Group by month to get a clean 12-month seasonal UHI penalty profile
-    monthly_uhi_profile = modern_overlap.groupby('Month')['Daily_UHI'].mean().to_dict()
-    
-    # Build the Counterfactual Engine Column for the entire 1933-2026 timeline
+    # Build the dynamic Counterfactual Engine Column
     uhi_free_lows = []
     for _, row in matrix.iterrows():
+        month = row['Month']
+        
+        # 1. If ground-truth rural data exists, use it directly (Pre-2015)
         if pd.notna(row['Wickenburg_Rural']):
             uhi_free_lows.append(row['Wickenburg_Rural'] + base_offset_wick)
+            
+        # 2. If rural data is dark but Tucson is active, build a Synthetic Rural Proxy (2015-2026)
+        elif pd.notna(row['Tucson_Airport']):
+            wick_tuc_diff = monthly_wick_tuc_profile.get(month, 0)
+            synthetic_rural_tmin = row['Tucson_Airport'] + wick_tuc_diff
+            uhi_free_lows.append(synthetic_rural_tmin + base_offset_wick)
+            
+        # 3. Ultimate emergency fallback
         else:
-            month = row['Month']
-            penalty = monthly_uhi_profile.get(month, 6.8) # Default fallback to mean UHI
-            uhi_free_lows.append(row['Phoenix_Sky_Harbor'] - penalty)
+            uhi_free_lows.append(row['Phoenix_Sky_Harbor'] - 6.8)
             
     matrix['UHI_Free_TMIN'] = uhi_free_lows
     matrix['Degrees_Trapped'] = matrix['Phoenix_Sky_Harbor'] - matrix['UHI_Free_TMIN']
@@ -55,11 +65,9 @@ st.write("---")
 # --- SIDEBAR CONTROLS ---
 st.sidebar.header("Select Time Frame")
 
-# Extract available years sorted newest to oldest
 available_years = sorted(df_matrix['Year'].unique(), reverse=True)
 selected_year = st.sidebar.selectbox("Select Year", available_years, index=0)
 
-# Map month integers to clean string names for user dropdown selection
 month_map = {
     1: "January", 2: "February", 3: "March", 4: "April", 5: "May", 6: "June",
     7: "July", 8: "August", 9: "September", 10: "October", 11: "November", 12: "December"
@@ -67,7 +75,7 @@ month_map = {
 selected_month_name = st.sidebar.selectbox("Select Month", list(month_map.values()), index=6) # Defaults to July
 selected_month_int = [key for key, val in month_map.items() if val == selected_month_name][0]
 
-# Filter our dataset to match the user's specific selection
+# Filter dataset to selection
 filtered_month_df = df_matrix[
     (df_matrix['Year'] == selected_year) & 
     (df_matrix['Month'] == selected_month_int)
@@ -76,7 +84,7 @@ filtered_month_df = df_matrix[
 if filtered_month_df.empty:
     st.warning(f"No continuous weather records found for {selected_month_name} {selected_year}. Try adjusting your target selections!")
 else:
-    # Calculate robust macro averages for the selected month block
+    # Calculate monthly averages dynamically
     avg_observed = filtered_month_df['Phoenix_Sky_Harbor'].mean()
     avg_counterfactual = filtered_month_df['UHI_Free_TMIN'].mean()
     avg_trapped = filtered_month_df['Degrees_Trapped'].mean()
