@@ -227,4 +227,24 @@ Historically, before major post-war urbanization, Phoenix overnight lows natural
 
 Our decadal breakdown shows that the Phoenix basin’s overnight climate didn't change linearly; it behaves like a staircase reflecting the region's changing land use:
 
-* **1930s–1940s (The Agricultural Oasis Phase):** During this era, the net UHI intensity registered as slightly *negative*. This catches the historical footprint of early Phoenix as a heavily irrigated agricultural hub. The widespread alfalfa fields
+* **1930s–1940s (The Agricultural Oasis Phase):** During this era, the net UHI intensity registered as slightly *negative*. This catches the historical footprint of early Phoenix as a heavily irrigated agricultural hub. The widespread alfalfa fields and citrus groves created a localized *oasis effect*—using evaporative cooling to keep nights tightly coupled with the raw desert.
+* **1950s–1960s (The Infrastructure Leap):** On October 1, 1953, the official weather station moved to the concrete runways of Sky Harbor Airport. The data immediately registered a permanent step-change jump, demonstrating the immediate impact of localized airport hardscape on temperature sensors.
+* **1970s–1980s (The Tipping Point Explosion):** This is the definitive urban tipping point. Between the 1970s and 1980s, the artificial heat load ballooned. In a single 10-year span, post-war suburban sprawl paved over the core agricultural green spaces, creating a massive, contiguous concrete grid that effectively stopped the valley floor from shedding its heat into the night sky.
+
+---
+
+### 2. The Multi-City Gradient (Tucson & Yuma)
+
+By validating Phoenix against intermediate urban centers over a major window, the model proved that UHI intensity directly scales with core pavement density rather than broad regional climate shifts:
+
+* **The Tucson Baseline (+7.41°F difference):** While Tucson is a major metropolitan area, it lacks the hyper-dense, concrete-locked basin architecture of the Phoenix core. Phoenix averaging nearly **7.5°F warmer** overnight than its high-desert sister city confirms that localized urban density—not just regional trends—dictates overnight heat stress.
+* **The Yuma Elevation Paradox (+0.17°F tie):** Geographically, Yuma sits at an elevation of just 140 feet compared to Phoenix at ~1,100 feet. By standard atmospheric physics, Yuma's lower elevation means it *should* be significantly hotter every single night. Instead, the two cities are practically tied. Phoenix's massive urban hardscape has completely overpowered a half-mile of natural geographic elevation cooling.
+
+---
+
+### 3. Methodology & Model Integrity
+
+To isolate these numbers, this tool utilizes an **Urban-Rural Pairing Baseline Adjustment**. 
+
+Rather than comparing Phoenix to a generic national average or an alpine control like Flagstaff, the model isolates a clean, pre-war window (1933–1940) to determine the natural geographic baseline offset of the low-elevation Phoenix basin. By anchoring our daily counterfactual engine to active, real-time regional weather systems while stripping away the verified decadal pavement footprint, we are able to project a highly accurate, scientifically backed model of a natural, unpaved Salt River Valley in today's world.
+""")
